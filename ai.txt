@@ -1,0 +1,163 @@
+
+
+连接mysql数据库，
+如果表predictionHistory不存在，则创建之（字段列表：id-数据id，predDate-运算日期，stockCode-证券代码，lastDate-最后交易日期，lastClose-最后收市价，predT1-预测T+1收市价，predT2-预测T+2收市价）
+调用fetch_and_predict前，根据tushare数据，算出上个交易日前50个最活跃的股票，股票代码写入stock.list
+
+
+
+
+连接mysql数据库，
+如果表predictionHistory不存在，则创建之（字段列表：id-数据id，predDate-运算日期，stockCode-证券代码，lastDate-最后交易日期，lastClose-最后收市价，predT1-预测T+1收市价，predT2-预测T+2收市价）
+调用fetch_and_predict前，根据tushare数据，算出上个交易日前50个最活跃的股票，股票代码写入stock.list
+预测结果相应写入predictionHistory表
+预测计算后的plot生成保留不要删，plot图按现有规则生成并保持
+注意plot中的最后收市价没有如期显示，修正一下现有代码
+
+
+
+
+增加计时器，记录并print从tushare抓取数据所消耗的时间
+
+
+
+
+然后，基于数据库中historical_data表中已有的数据（不用重复去tushare抓数了）
+按如下算法，计算每只股票的活跃度（写入historical_data表的一个字段，如果该字段不存在就创建它），最后print最后交易日期和活跃度最高的50个证券代码：
+
+算法步骤
+收集数据：收集股票的日成交量数据和日价格数据（开盘价、最高价、最低价、收盘价）。
+
+计算平均成交量：计算过去30天内（或其他选择的时间段）的平均成交量。
+
+计算当天成交量活跃度：
+
+如果当天成交量大于平均成交量的120%（或其他预设的阈值），则认为成交量活跃。
+否则，认为成交量不活跃。
+计算价格波动率：
+
+使用公式 
+(
+最高价
+−
+最低价
+)
+/
+开盘价
+(最高价−最低价)/开盘价 计算波动率。
+判断价格活跃度：
+
+如果波动率超过某个预设阈值（例如2%），则认为价格活跃。
+否则，认为价格不活跃。
+综合判断：
+
+如果成交量和价格波动率都显示活跃，可以认为该股票当天非常活跃。
+如果其中一个指标显示活跃，另一个不活跃，则可能需要进一步分析其他因素。
+如果两个指标都不活跃，则该股票当天可能相对不活跃。
+
+
+
+
+请修改活跃度的计算逻辑，注意“活跃度”我希望是一个“数值”而不是“布尔值”，谢谢
+
+要判断股票的活跃程度，你可以考虑以下几个步骤，基于成交量和价格波动来计算：
+
+成交量加权：首先计算当天股票的成交量与过去一定时间内（比如说过去20个交易日）平均成交量的比例。这个比例可以显示股票当天相对于近期的活跃程度。
+
+价格波动加权：计算当天股票价格的最高点和最低点之间的差值，并将这个差值与过去一定时间内的平均价格波动进行比较。这有助于了解股票价格在一天内的波动性。
+
+综合活跃度指数：将上面两个步骤得到的加权指标结合起来，形成一个综合的活跃度指数。你可以简单地取这两个指标的平均值，或者根据实际情况赋予不同的权重。
+
+例如，你可以设置一个公式：
+
+活跃度指数 = (成交量加权 + 价格波动加权) / 2
+
+或者，如果你认为成交量对活跃度的影响更大，你可以给成交量加权更高的权重：
+
+活跃度指数 = 0.6 * 成交量加权 + 0.4 * 价格波动加权
+
+
+
+
+请调整“活跃度”的计算逻辑：
+
+活跃度计算逻辑
+计算今日成交量比：计算今天的成交量与过去20个交易日平均成交量的比值。这个比值反映了股票今天相对于近期的活跃程度。
+
+计算今日价格波动比：计算今天股票最高价与最低价之差，再将这个差值与过去20个交易日平均的最高价与最低价之差的比值。这个比值帮助理解了股票今天的价格波动性。
+
+活跃度指数：将上述两个比值相加，然后除以2，得到股票的活跃度指数。
+
+具体公式如下：
+
+成交量比 = 今日成交量 / 过去20日平均成交量
+价格波动比 = (今日最高价 - 今日最低价) / 过去20日平均(最高价 - 最低价)
+活跃度指数 = (成交量比 + 价格波动比) / 2
+
+
+
+
+完成预测后，将预测结果写入predictionHistory表（如果不存在就先创建）
+
+id，数据id，自增长
+predDate，运行测算的日期
+stockCode，证券代码
+lastDate，最后交易日期
+lastClose，最后交易日收市价
+predT1，预测T+1收市价
+predT2，预测T+2收市价
+
+每个运行测算日期每个证券代码只保留一条最新测算结果数据就可以了，如果数据已经存在，直接覆盖它
+plot输出要保留哦
+
+
+
+
+将现有代码中数据的输入和输出方式从CSV改为mysql连接，连接参数：database_connection_string = 'mysql+pymysql://stock:Abcd1234!!@192.168.3.7:3306/aistock'
+数据库中的表已建好，名为etth1csv，数据已导入
+其他功能和代码逻辑不要动
+
+    query = f"""
+    SELECT trade_date, vol, high, low, open, close 
+    FROM historical_data_for_seq2seq 
+    WHERE ts_code = '{args.tsCode}' 
+    AND trade_date <= (
+        SELECT trade_date 
+        FROM historical_data_for_seq2seq 
+        WHERE ts_code = '{args.tsCode}' 
+        ORDER BY trade_date DESC 
+        LIMIT 1 OFFSET 2
+    ) 
+    ORDER BY trade_date DESC 
+    LIMIT 500
+    """
+    history_data = pd.read_sql_query(query, engine)  # 从MySQL数据库读取特定股票代码的数据，获取T-2交易日起前500个交易日的数据
+
+
+
+遍历深沪两市所有“0”和“6”开头的股票，用类似plot_macd_with_golden_cross的函数计算
+
+
+
+遍历深沪两市所有“0”和“6”开头的股票，用类似plot_macd_with_golden_cross的函数计算并找到该股票最近一次在0线下方出现金叉的日期，并将相关数据写入数据库表goldcross：
+
+create table goldencross
+(
+    id               bigint auto_increment comment '数据id'
+        primary key,
+    miningDate       datetime    null comment '测算日期',
+    stockCode        varchar(20) null comment '证券代码',
+    stockName        varchar(20) null comment '证券简称',
+    lastGCbelow0date date        null comment '最近一次出现0下金叉',
+    gcbzOffset       float       null comment '0下金叉偏移量'
+);
+
+还有几个逻辑也请实现：
+1、每个股票计算前先查一下goldencross表，如果今天已经测算过，那就不用算了
+2、1年内数据中没有找到金叉的股票也写入一下数据表，lastGCbelow0date和gcbzOffset设为null即可
+3、保留现有代码中的所有print和plot输出，
+
+谢谢
+
+
+

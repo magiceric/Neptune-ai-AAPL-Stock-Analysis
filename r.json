@@ -1,0 +1,25 @@
+{
+  'Meta Data': {
+    '1. Information': 'Daily Prices (open, high, low, close) and Volumes',
+    '2. Symbol': '600630.SZ',
+    '3. Last Refreshed': '2024-03-01',
+    '4. Output Size': 'Full size',
+    '5. Time Zone': 'US/Eastern'
+  },
+  'Time Series (Daily)': {
+    '2024-03-01': {
+      '1. open': '10.9600',
+      '2. high': '11.1500',
+      '3. low': '10.6100',
+      '4. close': '10.7600',
+      '5. volume': '48671470'
+    },
+    '2024-02-29': {
+      '1. open': '10.2000',
+      '2. high': '11.0000',
+      '3. low': '10.1300',
+      '4. close': '10.9600',
+      '5. volume': '65823740'
+    }
+  }
+}

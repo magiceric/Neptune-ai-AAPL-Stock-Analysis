@@ -1,0 +1,4 @@
+# config.py
+api_key = "BOPQ01V4V5IYH31L"
+neptune_key = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI0YzhiNWYzNC1kMmU3LTQzNzgtOWZmNy00MmJmZjY5MTgzY2UifQ=="
+tushare_api_key = "94cd405b2c1adff88930d17a3a3d6e5c0c53f4dc4945aeb264b2be3a"
