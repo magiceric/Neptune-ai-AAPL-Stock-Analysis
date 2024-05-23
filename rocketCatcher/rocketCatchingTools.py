@@ -21,8 +21,9 @@ class RocketCatchingTools:
             for handler in self.logger.handlers:
                 handler.close()
                 self.logger.removeHandler(handler)
-        self.engine.dispose()  # 关闭数据库连接
-
+        if hasattr(self, 'engine'):
+            self.engine.dispose()  # 关闭数据库连接
+            
     def setup_logging(self):
         """设置日志记录"""
         current_dir = os.path.dirname(__file__)
@@ -35,6 +36,8 @@ class RocketCatchingTools:
                             format='%(asctime)s - %(levelname)s - %(message)s',
                             handlers=[TimedRotatingFileHandler(log_path, when='midnight', encoding='utf-8')])
         self.logger = logging.getLogger()
+        self.logger.propagate = False  # Prevent logging from propagating to the root logger
+
     def fetch_historical_data(self):
         query = f"""
         SELECT trade_date, open, high, low, close, volume, turnover, amplitude, change_rate, change_amount, turnover_rate
@@ -231,12 +234,19 @@ class RocketCatchingTools:
         返回:
         bool: 如果在指定日期之前n日内出现KDJ低位上穿（或重合），则返回True，否则返回False
         """
+        # 自定义KDJ计算（同花顺公式）
+        def calculate_kdj(data, n1=9, n2=3, n3=3):
+            low_list = data['low'].rolling(window=n1, min_periods=1).min()
+            high_list = data['high'].rolling(window=n1, min_periods=1).max()
+            rsv = (data['close'] - low_list) / (high_list - low_list) * 100
+            K = rsv.ewm(com=n2-1, adjust=False).mean()
+            D = K.ewm(com=n3-1, adjust=False).mean()
+            J = 3 * K - 2 * D
+            return K, D, J
+
         # 确保historical_data已经包含了KDJ指标数据，如果没有则计算
         if 'K' not in self.historical_data.columns or 'D' not in self.historical_data.columns or 'J' not in self.historical_data.columns:
-            kdj = ta.momentum.StochasticOscillator(self.historical_data['high'], self.historical_data['low'], self.historical_data['close'], window=14, smooth_window=3)
-            self.historical_data['K'] = kdj.stoch().round(2)
-            self.historical_data['D'] = kdj.stoch_signal().round(2)
-            self.historical_data['J'] = (3 * kdj.stoch() - 2 * kdj.stoch_signal()).round(2)
+            self.historical_data['K'], self.historical_data['D'], self.historical_data['J'] = calculate_kdj(self.historical_data)
 
         # 找到参考日期在数据集中的位置
         try:
@@ -254,7 +264,7 @@ class RocketCatchingTools:
 
         # 检查是否存在KDJ低位上穿（或重合）的情况
         for i in range(1, len(relevant_data)):
-            if (relevant_data.iloc[i]['J'] <= 120 and
+            if (relevant_data.iloc[i]['J'] <= 50 and
                 relevant_data.iloc[i-1]['J'] < relevant_data.iloc[i-1]['K'] < relevant_data.iloc[i-1]['D'] and
                 relevant_data.iloc[i]['J'] >= relevant_data.iloc[i]['K'] >= relevant_data.iloc[i]['D']):
                 return True
@@ -265,6 +275,6 @@ if __name__ == "__main__":
     stock_code = '000620'  # 测试股票代码
     rc_tools = RocketCatchingTools(stock_code)
     result = rc_tools.is_stock_meeting_selection_criteria('2024-05-17', 5)
-    rc_tools.logger.info(f"选股标准是否满足: {result}")
+    print(f"选股标准是否满足: {result}")
 
 
