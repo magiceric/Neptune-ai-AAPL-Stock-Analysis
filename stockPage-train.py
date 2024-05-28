@@ -8,6 +8,21 @@ from torchvision import transforms
 from PIL import Image
 import time
 from tqdm import tqdm  # Import tqdm for progress bar
+import neptune
+from config import neptune_key  # Import Neptune API token from config file
+
+# Initialize Neptune
+run = neptune.init_run(
+    project='magiceric/aaa',
+    api_token=neptune_key
+)
+
+# Global variables for easy adjustment
+LEARNING_RATE = 0.0001
+BATCH_SIZE = 16
+WEIGHT_DECAY = 0.01
+DROPOUT_RATE = 0.3
+NUM_EPOCHS = 10
 
 # 强制使用GPU
 device = torch.device("cuda")
@@ -68,8 +83,8 @@ test_size = len(dataset) - train_size
 train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
 print("Train Dataset Size:", len(train_dataset))
 print("Test Dataset Size:", len(test_dataset))
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)  # 将batch_size从32减少到16
-test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)  # 将batch_size从32减少到16
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # 定义模型
 class FinancialImageModel(nn.Module):
@@ -87,11 +102,11 @@ class FinancialImageModel(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
         self.fc_reduce_dim = nn.Linear(128*28*28, 512)  # Reduce dimensionality
-        self.attention_layer = nn.MultiheadAttention(embed_dim=512, num_heads=4)
         self.spp_layer = SpatialPyramidPooling()
         self.fc_layers = nn.Sequential(
             nn.Linear(1612, 1024),  # Adjust input size to match SPP output
             nn.LeakyReLU(),
+            nn.Dropout(0.5),  # 添加Dropout层
             nn.Linear(1024, 1),
             nn.Tanh()
         )
@@ -102,17 +117,17 @@ class FinancialImageModel(nn.Module):
         x3 = self.conv_layers(boll_image)
         x4 = self.conv_layers(kdj_image)
 
-        x1 = self.fc_reduce_dim(x1.view(x1.size(0), -1)).unsqueeze(1)
-        x2 = self.fc_reduce_dim(x2.view(x2.size(0), -1)).unsqueeze(1)
-        x3 = self.fc_reduce_dim(x3.view(x3.size(0), -1)).unsqueeze(1)
-        x4 = self.fc_reduce_dim(x4.view(x4.size(0), -1)).unsqueeze(1)
+        x1 = self.fc_reduce_dim(x1.view(x1.size(0), -1))
+        x2 = self.fc_reduce_dim(x2.view(x2.size(0), -1))
+        x3 = self.fc_reduce_dim(x3.view(x3.size(0), -1))
+        x4 = self.fc_reduce_dim(x4.view(x4.size(0), -1))
 
         x = torch.cat((x1, x2, x3, x4), dim=1)
-        x, _ = self.attention_layer(x, x, x)
-        x = x.view(x.size(0), -1)
+        print(f"Shape after concatenation: {x.shape}")  # Debug print statement
         x = self.spp_layer(x)
         print(f"Shape after SPP: {x.shape}")  # Debug print statement
         x = self.fc_layers(x)
+        print(f"Output after fc_layers: {x}")  # Debug print statement
         return x
 
 class SpatialPyramidPooling(nn.Module):
@@ -152,11 +167,10 @@ model.apply(weights_init)
 
 # 定义损失函数和优化器
 criterion = nn.MSELoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=0.0001)  # 使用AdamW优化器
+optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)  # Use global learning rate and weight decay
 
 # 训练模型
-num_epochs = 10
-for epoch in range(num_epochs):
+for epoch in range(NUM_EPOCHS):
     model.train()
     running_loss = 0.0
     start_time = time.time()
@@ -181,6 +195,9 @@ for epoch in range(num_epochs):
         if i % 10 == 9:  # 每10个批次打印一次
             print(f"[{epoch + 1}, {i + 1}] loss: {running_loss / 10:.3f}")
             running_loss = 0.0
+
+        # Log loss to Neptune
+        run["train/loss"].log(loss.item())
 
     end_time = time.time()
     print(f"Epoch {epoch + 1} completed in {end_time - start_time:.2f} seconds")
@@ -211,8 +228,14 @@ with torch.no_grad():
         
         test_loss += loss.item()
 
+        # Log test loss to Neptune
+        run["test/loss"].log(loss.item())
+
 print(f"Test loss: {test_loss / len(test_loader):.3f}")
 
 # 保存模型
 torch.save(model.state_dict(), "financial_image_model.pth")
 print("模型已保存到 financial_image_model.pth")
+
+# Stop Neptune run
+run.stop()
